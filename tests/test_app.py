@@ -99,3 +99,30 @@ def test_tasks_isolated_between_sessions(monkeypatch):
         assert owner_b.get('/api/tasks').json()['tasks'] == []
         assert owner_a.post('/api/auth/logout').status_code == 200
         assert owner_b.post('/api/auth/logout').status_code == 200
+
+def test_security_headers():
+    response = client.get('/')
+    assert response.headers['x-content-type-options'] == 'nosniff'
+    assert response.headers['x-frame-options'] == 'DENY'
+    assert "default-src 'self'" in response.headers['content-security-policy']
+    assert response.headers['cache-control'] == 'no-store'
+
+def test_cross_origin_login_blocked():
+    response = client.post(
+        '/api/auth/login',
+        json={'password': 'anything'},
+        headers={'origin': 'https://attacker.invalid'}
+    )
+    assert response.status_code == 403
+
+def test_task_due_date_and_input_validation(monkeypatch):
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    with TestClient(app) as owner:
+        assert owner.post('/api/auth/login', json={'password':'test-owner-password'}).status_code == 200
+        good = owner.post('/api/tasks', json={'title':'Prepare assignment', 'due_at':'2026-11-15T10:00:00+05:30'})
+        assert good.status_code == 201
+        assert good.json()['due_at'].startswith('2026-11-15T10:00:00')
+        assert owner.post('/api/tasks', json={'title':'No timezone', 'due_at':'2026-11-15T10:00:00'}).status_code == 422
+        assert owner.post('/api/tasks', json={'title':'   '}).status_code == 422
+        assert owner.post('/api/auth/logout').status_code == 200
