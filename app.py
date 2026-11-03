@@ -8,12 +8,14 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from auth import install_auth, authenticated
+from tasks import install_tasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
-app = FastAPI(title="JARVIS Personal Assistant", version="0.3.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="JARVIS Personal Assistant", version="0.4.0", docs_url=None, redoc_url=None)
 install_auth(app)
+install_tasks(app)
 
 # Only the last 8 user/assistant exchanges are kept per active owner login.
 # This is memory-only, single-instance state; it disappears on process restart.
