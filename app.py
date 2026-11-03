@@ -67,7 +67,9 @@ async def chat(request: ChatRequest):
                     json={"model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
                           "instructions": SYSTEM,
                           "input": request.message,
-                          "max_output_tokens": 400},
+                          "max_output_tokens": 400,
+                          "store": False,
+                          "tool_choice": "none"},
                 )
                 result.raise_for_status()
                 data = result.json()
