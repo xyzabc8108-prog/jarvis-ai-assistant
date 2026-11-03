@@ -72,7 +72,7 @@ clearButton.addEventListener('click', async () => {
 /* Task planner: an owner-controlled checklist, not an autonomous executor. */
 const taskPanel = document.createElement('section');
 taskPanel.className = 'task-panel';
-taskPanel.innerHTML = '<div class="label">TASK PLANNER <span>NO AUTOMATIC EXECUTION</span></div><form id="task-form"><input id="task-title" maxlength="160" placeholder="Add a task for review..." required aria-label="Task title"><button type="submit">ADD</button></form><div id="task-list" aria-live="polite"></div><small>Tasks are temporary and disappear on logout or server restart. Approval never runs a task.</small>';
+taskPanel.innerHTML = '<div class="label">TASK PLANNER <span>NO AUTOMATIC EXECUTION</span></div><form id="task-form"><input id="task-title" maxlength="160" placeholder="Add a task for review..." required aria-label="Task title"><input id="task-due" type="datetime-local" aria-label="Optional task due date"><button type="submit">ADD</button></form><div id="task-list" aria-live="polite"></div><small>Tasks are temporary and disappear on logout or server restart. Approval never runs a task.</small>';
 $('.chat').appendChild(taskPanel);
 
 async function loadTasks() {
@@ -87,7 +87,7 @@ async function loadTasks() {
     const row = document.createElement('div');
     row.className = 'task-row';
     const text = document.createElement('span');
-    text.textContent = task.title + ' · ' + task.status.toUpperCase();
+    text.textContent = task.title + ' · ' + task.status.toUpperCase() + (task.due_at ? ' · ' + new Date(task.due_at).toLocaleString('en-IN', {dateStyle:'short', timeStyle:'short'}) : '');
     row.appendChild(text);
     const actions = task.status === 'pending' ? ['approve','cancel'] : task.status === 'approved' ? ['complete','cancel'] : [];
     for (const action of actions) {
@@ -118,10 +118,13 @@ $('#task-form').addEventListener('submit', async (event) => {
   const input = $('#task-title');
   const title = input.value.trim();
   if (!title) return;
-  const response = await fetch('/api/tasks', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})});
+  const dueValue = $('#task-due').value;
+  const due_at = dueValue ? new Date(dueValue).toISOString() : null;
+  const response = await fetch('/api/tasks', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,due_at})});
   if (response.status === 401) {showGate(true); return;}
   if (!response.ok) {addMessage('assistant','Unable to add task.'); return;}
   input.value = '';
+  $('#task-due').value = '';
   await loadTasks();
 });
 
