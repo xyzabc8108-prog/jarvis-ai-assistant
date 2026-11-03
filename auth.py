@@ -63,6 +63,8 @@ async def logout(request: Request):
     chat_usage.pop(token, None)
     from app import HISTORY
     HISTORY.pop(token, None)
+    from tasks import TASKS
+    TASKS.pop(token, None)
     response = JSONResponse({"authenticated": False})
     response.delete_cookie("jarvis_session", path="/", secure=os.getenv("JARVIS_LOCAL_DEV") != "1", samesite="strict", httponly=True)
     return response
