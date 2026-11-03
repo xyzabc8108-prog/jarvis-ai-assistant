@@ -166,3 +166,19 @@ def test_ai_memory_round_trip_without_api_charges(monkeypatch):
         assert owner.post('/api/chat', json={'message':'Reset confirmed'}).status_code == 200
         assert len(calls[2]['input']) == 1
         owner.post('/api/auth/logout')
+
+def test_system_diagnostics_are_owner_only(monkeypatch):
+    assert client.get('/api/system/status').status_code == 401
+    public = client.get('/api/health').json()
+    assert 'ai_configured' not in public
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    with TestClient(app) as owner:
+        assert owner.post('/api/auth/login', json={'password': 'test-owner-password'}).status_code == 200
+        status = owner.get('/api/system/status')
+        assert status.status_code == 200
+        data = status.json()
+        assert data['task_execution_enabled'] is False
+        assert data['persistent_storage_enabled'] is False
+        assert isinstance(data['chat_requests_remaining'], int)
+        owner.post('/api/auth/logout')
