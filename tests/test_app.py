@@ -126,3 +126,43 @@ def test_task_due_date_and_input_validation(monkeypatch):
         assert owner.post('/api/tasks', json={'title':'No timezone', 'due_at':'2026-11-15T10:00:00'}).status_code == 422
         assert owner.post('/api/tasks', json={'title':'   '}).status_code == 422
         assert owner.post('/api/auth/logout').status_code == 200
+
+def test_ai_memory_round_trip_without_api_charges(monkeypatch):
+    import importlib
+    api = importlib.import_module('app')
+    from collections import deque
+
+    calls = []
+    class FakeResponse:
+        def raise_for_status(self): pass
+        def json(self):
+            return {'output': [{'content': [{'type': 'output_text', 'text': 'Acknowledged.'}]}]}
+
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, headers=None, json=None):
+            assert url == 'https://api.openai.com/v1/responses'
+            assert headers['Authorization'] == 'Bearer fake-test-key'
+            calls.append(json)
+            return FakeResponse()
+
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    monkeypatch.setenv('OPENAI_API_KEY', 'fake-test-key')
+    monkeypatch.setattr(api.httpx, 'AsyncClient', FakeClient)
+
+    with TestClient(app) as owner:
+        assert owner.post('/api/auth/login', json={'password':'test-owner-password'}).status_code == 200
+        assert owner.post('/api/chat', json={'message':'Remember blue'}).json()['mode'] == 'ai'
+        assert owner.post('/api/chat', json={'message':'What color?'}).json()['answer'] == 'Acknowledged.'
+        assert calls[0]['input'] == [{'role':'user','content':'Remember blue'}]
+        assert len(calls[1]['input']) == 3
+        assert calls[1]['input'][0]['content'] == 'Remember blue'
+        assert calls[0]['store'] is False
+        assert calls[0]['tool_choice'] == 'none'
+        assert owner.post('/api/memory/clear').json()['cleared'] is True
+        assert owner.post('/api/chat', json={'message':'Reset confirmed'}).status_code == 200
+        assert len(calls[2]['input']) == 1
+        owner.post('/api/auth/logout')
