@@ -48,6 +48,25 @@ function addMessage(role, content) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+const clearButton = document.createElement('button');
+clearButton.type = 'button';
+clearButton.textContent = 'CLEAR MEMORY';
+clearButton.id = 'clear-memory';
+clearButton.title = 'Forget the recent AI conversation in this session';
+$('.below').appendChild(clearButton);
+clearButton.addEventListener('click', async () => {
+  if (!ownerAuthenticated || busy) return;
+  clearButton.disabled = true;
+  try {
+    const response = await fetch('/api/memory/clear', {method:'POST'});
+    if (response.status === 401) {showGate(true); return;}
+    if (!response.ok) throw new Error('Unable to clear memory');
+    messages.replaceChildren();
+    addMessage('assistant', 'Short-term conversation memory cleared.');
+  } catch (_) {addMessage('assistant', 'Could not clear memory. Try again.');}
+  finally {clearButton.disabled = false;}
+});
+
 function speak(text) {
   if (!speaking || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
