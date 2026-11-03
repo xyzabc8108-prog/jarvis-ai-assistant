@@ -30,6 +30,7 @@ $('#login-form').addEventListener('submit', async (event) => {
     }
     $('#login-password').value = '';
     showGate(false);
+    loadTasks();
     addMessage('assistant', 'Owner authenticated. Command center unlocked.');
   } catch (_) {$('#login-error').textContent = 'Cannot reach authentication service.';}
   finally {button.disabled = false;}
@@ -65,6 +66,63 @@ clearButton.addEventListener('click', async () => {
     addMessage('assistant', 'Short-term conversation memory cleared.');
   } catch (_) {addMessage('assistant', 'Could not clear memory. Try again.');}
   finally {clearButton.disabled = false;}
+});
+
+
+/* Task planner: an owner-controlled checklist, not an autonomous executor. */
+const taskPanel = document.createElement('section');
+taskPanel.className = 'task-panel';
+taskPanel.innerHTML = '<div class="label">TASK PLANNER <span>NO AUTOMATIC EXECUTION</span></div><form id="task-form"><input id="task-title" maxlength="160" placeholder="Add a task for review..." required aria-label="Task title"><button type="submit">ADD</button></form><div id="task-list" aria-live="polite"></div><small>Tasks are temporary and disappear on logout or server restart. Approval never runs a task.</small>';
+$('.chat').appendChild(taskPanel);
+
+async function loadTasks() {
+  if (!ownerAuthenticated) return;
+  const response = await fetch('/api/tasks');
+  if (response.status === 401) {showGate(true); return;}
+  if (!response.ok) return;
+  const data = await response.json();
+  const list = $('#task-list');
+  list.replaceChildren();
+  for (const task of data.tasks) {
+    const row = document.createElement('div');
+    row.className = 'task-row';
+    const text = document.createElement('span');
+    text.textContent = task.title + ' · ' + task.status.toUpperCase();
+    row.appendChild(text);
+    const actions = task.status === 'pending' ? ['approve','cancel'] : task.status === 'approved' ? ['complete','cancel'] : [];
+    for (const action of actions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = action.toUpperCase();
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          const changed = await fetch('/api/tasks/' + encodeURIComponent(task.id) + '/action', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action})
+          });
+          if (changed.status === 401) {showGate(true); return;}
+          if (!changed.ok) throw new Error('Task update failed');
+          await loadTasks();
+        } catch (_) {addMessage('assistant', 'Task change failed. Please retry.');}
+        finally {button.disabled = false;}
+      });
+      row.appendChild(button);
+    }
+    list.appendChild(row);
+  }
+}
+$('#task-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!ownerAuthenticated) return;
+  const input = $('#task-title');
+  const title = input.value.trim();
+  if (!title) return;
+  const response = await fetch('/api/tasks', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})});
+  if (response.status === 401) {showGate(true); return;}
+  if (!response.ok) {addMessage('assistant','Unable to add task.'); return;}
+  input.value = '';
+  await loadTasks();
 });
 
 function speak(text) {
@@ -141,6 +199,7 @@ async function initialize() {
     const authResponse = await fetch('/api/auth/status', {cache: 'no-store'});
     const authInfo = await authResponse.json();
     showGate(!authInfo.authenticated);
+    if (authInfo.authenticated) loadTasks();
   } catch (_) {$('#ai-status').textContent = 'OFFLINE'; showGate(true);}
 }
 function tick() {$('#clock').textContent = new Date().toLocaleTimeString('en-GB', {hour12: false});}
