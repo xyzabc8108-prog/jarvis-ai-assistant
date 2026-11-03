@@ -24,4 +24,4 @@ jobs:
         env:
           JARVIS_LOCAL_DEV: "1"
           JARVIS_OWNER_PASSWORD: "ci-test-password-do-not-use-in-prod"
-        run: pytest -q
+        run: python -m pytest -q
