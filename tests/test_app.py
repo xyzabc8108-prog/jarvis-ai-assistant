@@ -49,3 +49,19 @@ def test_chat_hourly_limit(monkeypatch):
         assert results[:30] == [200] * 30
         assert results[30] == 429
         assert owner.post('/api/auth/logout').status_code == 200
+
+def test_memory_requires_owner():
+    assert client.post('/api/memory/clear').status_code == 401
+
+def test_memory_clear_owner(monkeypatch):
+    from app import HISTORY
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    with TestClient(app) as owner:
+        assert owner.post('/api/auth/login', json={'password': 'test-owner-password'}).status_code == 200
+        token = owner.cookies.get('jarvis_session')
+        from collections import deque
+        HISTORY[token] = deque([{'role': 'user', 'content': 'temporary'}], maxlen=16)
+        assert owner.post('/api/memory/clear').json() == {'cleared': True}
+        assert token not in HISTORY
+        assert owner.post('/api/auth/logout').status_code == 200
