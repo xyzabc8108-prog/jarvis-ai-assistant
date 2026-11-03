@@ -45,3 +45,11 @@ python -m pytest -q
 ## Deployment
 
 Render Python service, free plan, Singapore region, auto-deploy from `main`. Start command: `uvicorn app:app --host 0.0.0.0 --port $PORT`.
+
+## Phase 3: Optional AI activation
+
+AI mode is off until the owner adds `OPENAI_API_KEY` to the Render service environment. Obtain a key directly from https://platform.openai.com/api-keys and **never paste it into chat, GitHub or the frontend**. In Render: JARVIS service → Environment → Add Environment Variable → `OPENAI_API_KEY` → Save and deploy. Optionally set `OPENAI_MODEL` to an API model enabled for the account. The model call sends no tools, requests `store=false`, and caps generated output at 400 tokens. It does not supply the assistant with web browsing, local shell, files, or scheduled execution.
+
+Protect your OpenAI API project with spending/budget alerts, and monitor usage. JARVIS has a basic **30 messages per session per hour** limit, but this is not a guaranteed billing cap. If the owner password has appeared in chat, rotate `JARVIS_OWNER_PASSWORD` directly in Render's Environment settings and do not post the replacement.
+
+Deployment updates are triggered automatically from `main`; confirm their successful completion in the Render dashboard before relying on new features.
