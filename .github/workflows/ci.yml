@@ -1,0 +1,27 @@
+name: JARVIS Quality Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python source
+        run: python -m compileall -q app.py auth.py tasks.py tests
+      - name: Run unit tests
+        env:
+          JARVIS_LOCAL_DEV: "1"
+          JARVIS_OWNER_PASSWORD: "ci-test-password-do-not-use-in-prod"
+        run: pytest -q
