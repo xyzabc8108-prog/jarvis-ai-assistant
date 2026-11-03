@@ -125,6 +125,28 @@ $('#task-form').addEventListener('submit', async (event) => {
   await loadTasks();
 });
 
+
+/* Visible owner session controls. Logout also removes server-side task and chat state. */
+const logoutButton = document.createElement('button');
+logoutButton.type = 'button';
+logoutButton.id = 'logout-button';
+logoutButton.textContent = 'LOG OUT';
+$('.below').appendChild(logoutButton);
+logoutButton.addEventListener('click', async () => {
+  if (!ownerAuthenticated) return;
+  logoutButton.disabled = true;
+  try {
+    const response = await fetch('/api/auth/logout', {method: 'POST'});
+    if (!response.ok) throw new Error('Logout failed');
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    messages.replaceChildren();
+    $('#task-list').replaceChildren();
+    $('#mode').textContent = 'LOCAL MODE';
+    showGate(true);
+  } catch (_) {addMessage('assistant', 'Could not log out. Please try again.');}
+  finally {logoutButton.disabled = false;}
+});
+
 function speak(text) {
   if (!speaking || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
@@ -144,6 +166,7 @@ async function sendMessage(message) {
   try {
     const response = await fetch('/api/chat', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message})});
     if (response.status === 401) { showGate(true); throw new Error('Unauthorized'); }
+    if (response.status === 429) {addMessage('assistant', 'Hourly chat limit reached. Try again later.'); return;}
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     addMessage('assistant', data.answer);
