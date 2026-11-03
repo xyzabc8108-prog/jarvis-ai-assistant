@@ -31,6 +31,7 @@ $('#login-form').addEventListener('submit', async (event) => {
     $('#login-password').value = '';
     showGate(false);
     loadTasks();
+    refreshSystemStatus();
     addMessage('assistant', 'Owner authenticated. Command center unlocked.');
   } catch (_) {$('#login-error').textContent = 'Cannot reach authentication service.';}
   finally {button.disabled = false;}
@@ -129,6 +130,17 @@ $('#task-form').addEventListener('submit', async (event) => {
 });
 
 
+async function refreshSystemStatus() {
+  if (!ownerAuthenticated) return;
+  try {
+    const response = await fetch('/api/system/status', {cache: 'no-store'});
+    if (!response.ok) return;
+    const data = await response.json();
+    $('#ai-status').textContent = data.ai_configured ? 'CONFIGURED' : 'LOCAL';
+    $('#state').textContent = 'READY · ' + data.chat_requests_remaining + ' CHAT REQUESTS LEFT';
+  } catch (_) {}
+}
+
 /* Visible owner session controls. Logout also removes server-side task and chat state. */
 const logoutButton = document.createElement('button');
 logoutButton.type = 'button';
@@ -146,6 +158,7 @@ logoutButton.addEventListener('click', async () => {
     $('#task-list').replaceChildren();
     $('#mode').textContent = 'LOCAL MODE';
     showGate(true);
+    $('#ai-status').textContent = 'LOCKED';
   } catch (_) {addMessage('assistant', 'Could not log out. Please try again.');}
   finally {logoutButton.disabled = false;}
 });
@@ -201,6 +214,7 @@ async function sendMessage(message) {
     addMessage('assistant', data.answer);
     $('#mode').textContent = data.mode === 'ai' ? 'AI MODE' : 'LOCAL MODE';
     speak(data.answer);
+    refreshSystemStatus();
   } catch (_) {
     addMessage('assistant', 'Unable to reach the assistant service. Check that the server is running.');
   } finally {
@@ -247,11 +261,11 @@ async function initialize() {
     const response = await fetch('/api/health');
     if (!response.ok) throw new Error('Offline');
     const info = await response.json();
-    $('#ai-status').textContent = info.ai_configured ? 'CONNECTED' : 'LOCAL';
+    $('#ai-status').textContent = 'LOCKED';
     const authResponse = await fetch('/api/auth/status', {cache: 'no-store'});
     const authInfo = await authResponse.json();
     showGate(!authInfo.authenticated);
-    if (authInfo.authenticated) loadTasks();
+    if (authInfo.authenticated) {loadTasks(); refreshSystemStatus();}
   } catch (_) {$('#ai-status').textContent = 'OFFLINE'; showGate(true);}
 }
 function tick() {$('#clock').textContent = new Date().toLocaleTimeString('en-GB', {hour12: false});}
