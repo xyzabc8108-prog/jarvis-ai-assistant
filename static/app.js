@@ -150,6 +150,32 @@ logoutButton.addEventListener('click', async () => {
   finally {logoutButton.disabled = false;}
 });
 
+
+/* Manual JSON backup; browser only. No third-party upload or external request. */
+const exportTasks = document.createElement('button');
+exportTasks.type = 'button';
+exportTasks.id = 'export-tasks';
+exportTasks.textContent = 'EXPORT TASKS';
+$('.task-panel').appendChild(exportTasks);
+exportTasks.addEventListener('click', async () => {
+  if (!ownerAuthenticated) return;
+  try {
+    const response = await fetch('/api/tasks');
+    if (response.status === 401) {showGate(true); return;}
+    if (!response.ok) throw new Error('Unable to export');
+    const data = await response.json();
+    const blob = new Blob([JSON.stringify({version:1, exported_at:new Date().toISOString(), tasks:data.tasks}, null, 2)], {type:'application/json'});
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = 'jarvis-tasks-backup.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (_) {addMessage('assistant', 'Task export failed. Please try again.');}
+});
+
 function speak(text) {
   if (!speaking || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
