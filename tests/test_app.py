@@ -65,3 +65,37 @@ def test_memory_clear_owner(monkeypatch):
         assert owner.post('/api/memory/clear').json() == {'cleared': True}
         assert token not in HISTORY
         assert owner.post('/api/auth/logout').status_code == 200
+
+def test_task_requires_owner():
+    assert client.get('/api/tasks').status_code == 401
+    assert client.post('/api/tasks', json={'title': 'Draft report'}).status_code == 401
+
+def test_task_workflow(monkeypatch):
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    with TestClient(app) as owner:
+        assert owner.post('/api/auth/login', json={'password': 'test-owner-password'}).status_code == 200
+        created = owner.post('/api/tasks', json={'title': 'Draft report'})
+        assert created.status_code == 201
+        task_id = created.json()['id']
+        assert created.json()['status'] == 'pending'
+        assert owner.post(f'/api/tasks/{task_id}/action', json={'action': 'complete'}).status_code == 409
+        approved = owner.post(f'/api/tasks/{task_id}/action', json={'action': 'approve'})
+        assert approved.status_code == 200
+        assert approved.json()['status'] == 'approved'
+        done = owner.post(f'/api/tasks/{task_id}/action', json={'action': 'complete'})
+        assert done.status_code == 200
+        assert done.json()['status'] == 'completed'
+        assert owner.delete('/api/tasks').json()['cleared'] == 1
+        assert owner.post('/api/auth/logout').status_code == 200
+
+def test_tasks_isolated_between_sessions(monkeypatch):
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    with TestClient(app) as owner_a, TestClient(app) as owner_b:
+        assert owner_a.post('/api/auth/login', json={'password':'test-owner-password'}).status_code == 200
+        assert owner_b.post('/api/auth/login', json={'password':'test-owner-password'}).status_code == 200
+        assert owner_a.post('/api/tasks', json={'title':'Only in session A'}).status_code == 201
+        assert owner_b.get('/api/tasks').json()['tasks'] == []
+        assert owner_a.post('/api/auth/logout').status_code == 200
+        assert owner_b.post('/api/auth/logout').status_code == 200
