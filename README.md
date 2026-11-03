@@ -62,3 +62,9 @@ Deployment updates are triggered automatically from `main`; confirm their succes
 - Restarting the Render instance loses this context; the server can restart on the free plan.
 - Only authenticated requests can clear or use conversational memory. Local fallback answers remain rule-based and do not use conversation history.
 - This is a prototype, not a durable multi-device memory service. Do not submit sensitive personal information.
+
+## Phase 5: Task planner (non-executing)
+
+Once logged in, add a task in the **Task Planner** section. New tasks are `pending`; you may explicitly **approve**, **complete** or **cancel** them. Approval does not run commands or schedule anything. The API endpoints are `GET /api/tasks`, `POST /api/tasks`, `POST /api/tasks/{id}/action`, and `DELETE /api/tasks`.
+
+This MVP keeps at most 50 tasks per authenticated session in server RAM, with a per-session status history only. They disappear on logout, instance restart, or replacement. Due dates are accepted by the API as timezone-aware timestamps but **do not trigger reminders**. This is deliberately not an autonomous job runner. Reliable background scheduling requires durable storage, independent workers, user-visible audit logs, and permissions for each external action. No external integrations are enabled through the task planner.
