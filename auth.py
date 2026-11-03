@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/api/auth")
 sessions: dict[str, float] = {}
 attempts: dict[str, deque[float]] = defaultdict(deque)
+chat_usage: dict[str, deque[float]] = defaultdict(deque)
+CHAT_WINDOW = 60 * 60
+CHAT_LIMIT = 30
 SESSION_SECONDS = 12 * 60 * 60
 RATE_WINDOW = 10 * 60
 RATE_LIMIT = 5
@@ -57,6 +60,7 @@ async def login(body: LoginRequest, request: Request):
 async def logout(request: Request):
     token = request.cookies.get("jarvis_session", "")
     sessions.pop(token, None)
+    chat_usage.pop(token, None)
     response = JSONResponse({"authenticated": False})
     response.delete_cookie("jarvis_session", path="/", secure=os.getenv("JARVIS_LOCAL_DEV") != "1", samesite="strict", httponly=True)
     return response
@@ -66,8 +70,18 @@ def install_auth(app):
 
     @app.middleware("http")
     async def protect(request: Request, call_next):
-        if request.url.path == "/api/chat" and not authenticated(request):
-            return JSONResponse(status_code=401, content={"detail": "Owner authentication required."})
+        if request.url.path == "/api/chat":
+            if not authenticated(request):
+                return JSONResponse(status_code=401, content={"detail": "Owner authentication required."})
+            if request.method == "POST":
+                token = request.cookies.get("jarvis_session", "")
+                now = time.time()
+                q = chat_usage[token]
+                while q and q[0] < now - CHAT_WINDOW:
+                    q.popleft()
+                if len(q) >= CHAT_LIMIT:
+                    return JSONResponse(status_code=429, content={"detail": "Hourly request limit reached."})
+                q.append(now)
         # Deny cross-origin state-changing browser calls.
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             origin = request.headers.get("origin")
