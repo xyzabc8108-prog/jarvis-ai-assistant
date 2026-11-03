@@ -53,3 +53,12 @@ AI mode is off until the owner adds `OPENAI_API_KEY` to the Render service envir
 Protect your OpenAI API project with spending/budget alerts, and monitor usage. JARVIS has a basic **30 messages per session per hour** limit, but this is not a guaranteed billing cap. If the owner password has appeared in chat, rotate `JARVIS_OWNER_PASSWORD` directly in Render's Environment settings and do not post the replacement.
 
 Deployment updates are triggered automatically from `main`; confirm their successful completion in the Render dashboard before relying on new features.
+
+## Phase 4: Short-term conversational memory
+
+- The last eight user/assistant exchanges are passed back to the AI for follow-up context.
+- This history exists only in the running process, separated by authenticated login session, and **is not persisted to a database**.
+- Use **CLEAR MEMORY** in the interface to forget the current session's context. Logging out also discards it.
+- Restarting the Render instance loses this context; the server can restart on the free plan.
+- Only authenticated requests can clear or use conversational memory. Local fallback answers remain rule-based and do not use conversation history.
+- This is a prototype, not a durable multi-device memory service. Do not submit sensitive personal information.
