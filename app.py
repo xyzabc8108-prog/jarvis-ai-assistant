@@ -44,7 +44,23 @@ def script():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "jarvis", "ai_configured": bool(os.getenv("OPENAI_API_KEY"))}
+    return {"ok": True, "service": "jarvis"}
+
+@app.get("/api/system/status")
+async def system_status(request: Request):
+    if not authenticated(request):
+        raise HTTPException(status_code=401, detail="Owner authentication required.")
+    from tasks import TASKS
+    from auth import chat_usage, CHAT_LIMIT
+    token = request.cookies.get("jarvis_session", "")
+    return {
+        "ai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "recent_exchanges": len(HISTORY.get(token, ())) // 2,
+        "task_count": len(TASKS.get(token, {})),
+        "chat_requests_remaining": max(0, CHAT_LIMIT - len(chat_usage.get(token, ()))),
+        "task_execution_enabled": False,
+        "persistent_storage_enabled": False
+    }
 
 SYSTEM = ("You are JARVIS, a concise, helpful, voice-friendly personal assistant. "
           "Be clear that you cannot independently operate the user's PC or perform external actions. "
