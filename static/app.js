@@ -3,6 +3,38 @@ const messages = $('#messages');
 let speaking = false;
 let recognition = null;
 let busy = false;
+let ownerAuthenticated = false;
+const gate = document.createElement('div');
+gate.id = 'login-gate';
+gate.innerHTML = '<form id="login-form" autocomplete="off"><h2>OWNER ACCESS REQUIRED</h2><p>Enter your private JARVIS access password.</p><input id="login-password" type="password" placeholder="Access password" required autocomplete="current-password"><button type="submit">UNLOCK COMMAND CENTER</button><p id="login-error" role="alert"></p></form>';
+document.body.appendChild(gate);
+
+function showGate(show) {
+  gate.style.display = show ? 'grid' : 'none';
+  ownerAuthenticated = !show;
+  if (show) $('#login-password').focus();
+}
+$('#login-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = $('#login-form button');
+  button.disabled = true;
+  $('#login-error').textContent = '';
+  try {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: $('#login-password').value})
+    });
+    if (!response.ok) {
+      $('#login-error').textContent = response.status === 429 ? 'Too many attempts. Try again later.' : 'Access denied. Check your password.';
+      return;
+    }
+    $('#login-password').value = '';
+    showGate(false);
+    addMessage('assistant', 'Owner authenticated. Command center unlocked.');
+  } catch (_) {$('#login-error').textContent = 'Cannot reach authentication service.';}
+  finally {button.disabled = false;}
+});
+
 
 function addMessage(role, content) {
   const element = document.createElement('div');
@@ -27,13 +59,14 @@ function speak(text) {
 }
 
 async function sendMessage(message) {
-  if (busy || !message.trim()) return;
+  if (busy || !message.trim() || !ownerAuthenticated) return;
   busy = true;
   $('#send').disabled = true;
   addMessage('user', message);
   $('#state').textContent = 'PROCESSING REQUEST';
   try {
     const response = await fetch('/api/chat', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message})});
+    if (response.status === 401) { showGate(true); throw new Error('Unauthorized'); }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     addMessage('assistant', data.answer);
@@ -51,7 +84,7 @@ async function sendMessage(message) {
 $('#chat-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const message = $('#prompt').value.trim();
-  if (!message || busy) return;
+  if (!message || busy || !ownerAuthenticated) return;
   $('#prompt').value = '';
   sendMessage(message);
 });
@@ -86,7 +119,10 @@ async function initialize() {
     if (!response.ok) throw new Error('Offline');
     const info = await response.json();
     $('#ai-status').textContent = info.ai_configured ? 'CONNECTED' : 'LOCAL';
-  } catch (_) {$('#ai-status').textContent = 'OFFLINE';}
+    const authResponse = await fetch('/api/auth/status', {cache: 'no-store'});
+    const authInfo = await authResponse.json();
+    showGate(!authInfo.authenticated);
+  } catch (_) {$('#ai-status').textContent = 'OFFLINE'; showGate(true);}
 }
 function tick() {$('#clock').textContent = new Date().toLocaleTimeString('en-GB', {hour12: false});}
 tick(); setInterval(tick, 1000); initialize();
