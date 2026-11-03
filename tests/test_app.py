@@ -26,6 +26,7 @@ def test_long_input_rejected():
 
 def test_owner_login_and_chat(monkeypatch):
     monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
     with TestClient(app) as owner:
         bad = owner.post('/api/auth/login', json={'password': 'wrong'})
