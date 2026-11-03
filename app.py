@@ -2,16 +2,23 @@
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from collections import deque
+from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
-from auth import install_auth
+from fastapi import FastAPI, HTTPException, Request
+from auth import install_auth, authenticated
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
-app = FastAPI(title="JARVIS Personal Assistant", version="0.2.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="JARVIS Personal Assistant", version="0.3.0", docs_url=None, redoc_url=None)
 install_auth(app)
+
+# Only the last 8 user/assistant exchanges are kept per active owner login.
+# This is memory-only, single-instance state; it disappears on process restart.
+HISTORY: dict[str, deque[dict[str, str]]] = {}
+MAX_EXCHANGES = 8
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
@@ -52,9 +59,19 @@ def local_answer(message: str) -> str:
         return "At your service. The command center is online. What shall we discuss?"
     return "Local mode is active. For general AI conversations, configure OPENAI_API_KEY on the server. I won't execute commands or access files without a separately designed permission system."
 
+@app.post("/api/memory/clear")
+async def clear_memory(request: Request):
+    if not authenticated(request):
+        raise HTTPException(status_code=401, detail="Owner authentication required.")
+    HISTORY.pop(request.cookies.get("jarvis_session", ""), None)
+    return {"cleared": True}
+
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, http_request: Request):
     key = os.getenv("OPENAI_API_KEY")
+    token = http_request.cookies.get("jarvis_session", "")
+    # A separate conversation is maintained for each authenticated owner session.
+    previous = list(HISTORY.get(token, ())) if token else []
     mode = "local"
     answer = local_answer(request.message)
     if key:
@@ -66,7 +83,7 @@ async def chat(request: ChatRequest):
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                     json={"model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
                           "instructions": SYSTEM,
-                          "input": request.message,
+                          "input": previous + [{"role": "user", "content": request.message}],
                           "max_output_tokens": 400,
                           "store": False,
                           "tool_choice": "none"},
@@ -78,5 +95,9 @@ async def chat(request: ChatRequest):
                 answer = "\n".join(pieces).strip() or "The AI returned no text."
         except (httpx.HTTPError, ValueError):
             raise HTTPException(status_code=503, detail="AI service unavailable. Please try again.")
+    if key and token:
+        conversation = HISTORY.setdefault(token, deque(maxlen=MAX_EXCHANGES * 2))
+        conversation.append({"role": "user", "content": request.message})
+        conversation.append({"role": "assistant", "content": answer})
     return ChatResponse(answer=answer, mode=mode,
                         time_utc=datetime.now(timezone.utc).isoformat())
