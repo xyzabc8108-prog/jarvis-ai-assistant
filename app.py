@@ -5,11 +5,13 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from auth import install_auth
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
-app = FastAPI(title="JARVIS Personal Assistant", version="0.1.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="JARVIS Personal Assistant", version="0.2.0", docs_url=None, redoc_url=None)
+install_auth(app)
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
