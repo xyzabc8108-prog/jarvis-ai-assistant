@@ -38,3 +38,14 @@ def test_owner_login_and_chat(monkeypatch):
         assert response.json()['mode'] == 'local'
         owner.post('/api/auth/logout')
         assert owner.post('/api/chat', json={'message': 'hi'}).status_code == 401
+
+def test_chat_hourly_limit(monkeypatch):
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    with TestClient(app) as owner:
+        assert owner.post('/api/auth/login', json={'password': 'test-owner-password'}).status_code == 200
+        results = [owner.post('/api/chat', json={'message': 'hi'}).status_code for _ in range(31)]
+        assert results[:30] == [200] * 30
+        assert results[30] == 429
+        assert owner.post('/api/auth/logout').status_code == 200
