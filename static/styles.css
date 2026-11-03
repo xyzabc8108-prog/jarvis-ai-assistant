@@ -7,3 +7,13 @@
 #login-form button{padding:16px;border:1px solid #36bfd6;background:#0b3b4b;color:#b6f8ff;letter-spacing:1px;font-size:12px;border-radius:5px}
 #login-form button:disabled{opacity:.5;cursor:wait}
 #login-error{color:#ff7e90!important;min-height:20px}
+
+.task-panel{margin-top:24px;border-top:1px solid #1c4053;padding-top:20px}
+.task-panel form{margin-top:12px}
+.task-panel form input{min-width:0}
+.task-panel form button,.task-row button{font-size:10px;letter-spacing:1px;border:1px solid #286e83;border-radius:4px;padding:7px;color:#80e2f0}
+.task-panel>small{display:block;color:#6998a8;margin-top:12px;line-height:1.5}
+#task-list{display:flex;flex-direction:column;max-height:170px;overflow:auto;gap:6px;margin-top:10px}
+.task-row{display:flex;align-items:center;gap:8px;padding:7px;border:1px solid #1a4654;border-radius:4px;font-size:11px;color:#b8e3ea}
+.task-row span{flex:1;overflow-wrap:anywhere}
+.task-row button{font-size:9px}
