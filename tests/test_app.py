@@ -217,3 +217,54 @@ def test_ai_error_categories():
     assert classify_ai_error(404)[1] == 'model_unavailable'
     assert classify_ai_error(400)[1] == 'api_request_invalid'
     assert classify_ai_error(503)[1] == 'api_service_unavailable'
+
+def test_ollama_local_chat_without_cloud_key(monkeypatch):
+    import importlib
+    api = importlib.import_module('app')
+    calls = []
+    async def fake_ollama(messages, model):
+        calls.append((messages, model))
+        return "Hello from local Ollama"
+    monkeypatch.setattr(api, 'ollama_chat', fake_ollama)
+    monkeypatch.setenv('JARVIS_AI_PROVIDER', 'ollama')
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    with TestClient(app) as owner:
+        assert owner.post('/api/auth/login', json={'password':'test-owner-password'}).status_code == 200
+        status = owner.get('/api/system/status').json()
+        assert status['ai_provider'] == 'ollama'
+        assert status['ai_configured'] is True
+        first = owner.post('/api/chat', json={'message':'Hello'})
+        assert first.status_code == 200
+        assert first.json()['mode'] == 'ai'
+        assert first.json()['answer'] == 'Hello from local Ollama'
+        assert calls[0][0][0]['role'] == 'system'
+        assert calls[0][0][-1]['content'] == 'Hello'
+        assert calls[0][1] == 'llama3.2'
+        owner.post('/api/chat', json={'message':'Follow up'})
+        assert len(calls[1][0]) == 4
+        owner.post('/api/auth/logout')
+
+def test_ollama_adapter_localhost_only(monkeypatch):
+    import importlib
+    backend = importlib.import_module('ollama_backend')
+    calls = []
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {'message': {'content': 'Locally generated'}}
+    class FakeClient:
+        def __init__(self, **kwargs):
+            assert kwargs['trust_env'] is False
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, json):
+            calls.append((url, json))
+            return FakeResponse()
+    monkeypatch.setattr(backend.httpx, 'AsyncClient', FakeClient)
+    import asyncio
+    answer = asyncio.run(backend.ollama_chat([{'role':'user','content':'Hello'}], 'llama3.2'))
+    assert answer == 'Locally generated'
+    assert calls[0][0] == 'http://127.0.0.1:11434/api/chat'
+    assert calls[0][1]['stream'] is False
