@@ -68,3 +68,8 @@ Deployment updates are triggered automatically from `main`; confirm their succes
 Once logged in, add a task in the **Task Planner** section. New tasks are `pending`; you may explicitly **approve**, **complete** or **cancel** them. Approval does not run commands or schedule anything. The API endpoints are `GET /api/tasks`, `POST /api/tasks`, `POST /api/tasks/{id}/action`, and `DELETE /api/tasks`.
 
 This MVP keeps at most 50 tasks per authenticated session in server RAM, with a per-session status history only. They disappear on logout, instance restart, or replacement. Due dates are accepted by the API as timezone-aware timestamps but **do not trigger reminders**. This is deliberately not an autonomous job runner. Reliable background scheduling requires durable storage, independent workers, user-visible audit logs, and permissions for each external action. No external integrations are enabled through the task planner.
+
+
+## Local Windows Ollama mode
+
+The existing dashboard also supports an entirely local Ollama model without OpenAI API credits. On your PC set `JARVIS_AI_PROVIDER=ollama`, `OLLAMA_MODEL=llama3.2`, `JARVIS_LOCAL_DEV=1`, and a strong local owner password. Run Uvicorn bound to `127.0.0.1`, never the public LAN. See [LOCAL_WINDOWS_SETUP.md](LOCAL_WINDOWS_SETUP.md) for complete installation commands and the 1B fallback for low-memory machines. Render continues using its existing OpenAI configuration by default.
