@@ -10,12 +10,13 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from auth import install_auth, authenticated
 from tasks import install_tasks
+from ollama_backend import ollama_chat
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("jarvis.ai")
 ROOT = Path(__file__).resolve().parent
-app = FastAPI(title="JARVIS Personal Assistant", version="0.4.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="JARVIS Personal Assistant", version="0.5.0", docs_url=None, redoc_url=None)
 install_auth(app)
 install_tasks(app)
 
@@ -56,7 +57,13 @@ async def system_status(request: Request):
     from auth import chat_usage, CHAT_LIMIT
     token = request.cookies.get("jarvis_session", "")
     return {
-        "ai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "ai_configured": (
+            os.getenv("JARVIS_AI_PROVIDER", "openai").lower() == "ollama"
+            or bool(os.getenv("OPENAI_API_KEY"))
+        ),
+        "ai_provider": os.getenv("JARVIS_AI_PROVIDER", "openai").lower()
+                       if os.getenv("JARVIS_AI_PROVIDER", "openai").lower() in {"openai", "ollama"}
+                       else "invalid",
         "recent_exchanges": len(HISTORY.get(token, ())) // 2,
         "task_count": len(TASKS.get(token, {})),
         "chat_requests_remaining": max(0, CHAT_LIMIT - len(chat_usage.get(token, ()))),
@@ -110,13 +117,26 @@ async def clear_memory(request: Request):
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, http_request: Request):
-    key = os.getenv("OPENAI_API_KEY")
+    provider = os.getenv("JARVIS_AI_PROVIDER", "openai").lower()
+    if provider not in {"openai", "ollama"}:
+        raise HTTPException(status_code=503, detail={
+            "code": "provider_invalid",
+            "message": "JARVIS_AI_PROVIDER must be openai or ollama."
+        })
+    key = os.getenv("OPENAI_API_KEY") if provider == "openai" else None
     token = http_request.cookies.get("jarvis_session", "")
     # A separate conversation is maintained for each authenticated owner session.
     previous = list(HISTORY.get(token, ())) if token else []
     mode = "local"
     answer = local_answer(request.message)
-    if key:
+    if provider == "ollama":
+        mode = "ai"
+        answer = await ollama_chat(
+            [{"role": "system", "content": SYSTEM}] + previous
+            + [{"role": "user", "content": request.message}],
+            os.getenv("OLLAMA_MODEL", "llama3.2")
+        )
+    elif key:
         mode = "ai"
         try:
             async with httpx.AsyncClient(timeout=25.0) as client:
@@ -164,7 +184,7 @@ async def chat(request: ChatRequest, http_request: Request):
             raise HTTPException(status_code=502, detail={
                 "code": "api_response_invalid", "message": "OpenAI returned an unexpected response."
             })
-    if key and token:
+    if mode == "ai" and token:
         conversation = HISTORY.setdefault(token, deque(maxlen=MAX_EXCHANGES * 2))
         conversation.append({"role": "user", "content": request.message})
         conversation.append({"role": "assistant", "content": answer})
