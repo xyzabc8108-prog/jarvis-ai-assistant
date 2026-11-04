@@ -212,7 +212,21 @@ async function sendMessage(message) {
     const response = await fetch('/api/chat', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message})});
     if (response.status === 401) { showGate(true); throw new Error('Unauthorized'); }
     if (response.status === 429) {addMessage('assistant', 'Hourly chat limit reached. Try again later.'); return;}
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      let message = 'The AI service could not complete your request.';
+      try {
+        const error = await response.json();
+        const detail = error.detail;
+        if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
+          message = detail.message;
+        } else if (typeof detail === 'string' && response.status !== 500) {
+          message = detail;
+        }
+      } catch (_) {}
+      addMessage('assistant', message);
+      $('#ai-status').textContent = 'AI ERROR';
+      return;
+    }
     const data = await response.json();
     addMessage('assistant', data.answer);
     $('#mode').textContent = data.mode === 'ai' ? 'AI MODE' : 'LOCAL MODE';
