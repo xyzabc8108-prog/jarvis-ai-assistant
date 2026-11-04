@@ -1,5 +1,6 @@
 """JARVIS: deliberately permission-limited voice-ready personal assistant."""
 import os
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from collections import deque
@@ -12,6 +13,7 @@ from tasks import install_tasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger("jarvis.ai")
 ROOT = Path(__file__).resolve().parent
 app = FastAPI(title="JARVIS Personal Assistant", version="0.4.0", docs_url=None, redoc_url=None)
 install_auth(app)
@@ -62,6 +64,28 @@ async def system_status(request: Request):
         "persistent_storage_enabled": False
     }
 
+def classify_ai_error(status: int, code: str | None = None) -> tuple[int, str, str]:
+    """Only approved, non-sensitive diagnostics are returned to the owner."""
+    code = code if isinstance(code, str) else ""
+    if status == 401:
+        return (502, "api_authentication", "OpenAI rejected the API key. Check the key in Render Environment.")
+    if status == 403:
+        return (502, "api_permission", "The API key or project lacks permission for this operation.")
+    if status == 404:
+        return (502, "model_unavailable", "The requested AI model is unavailable to this API project.")
+    if status == 429:
+        if code in {"insufficient_quota", "credit_balance_exhausted",
+                    "organization_spend_limit_exceeded", "project_spend_limit_exceeded",
+                    "organization_usage_limit_exceeded"}:
+            return (503, "api_quota", "API credit or project usage limit reached. Review OpenAI Platform billing.")
+        return (503, "api_rate_limit", "OpenAI rate limit reached. Try again later.")
+    if status == 400:
+        return (502, "api_request_invalid", "OpenAI rejected the request. Review model and API configuration.")
+    if status >= 500:
+        return (503, "api_service_unavailable", "OpenAI is temporarily unavailable. Try again later.")
+    return (502, "api_upstream_error", "OpenAI rejected the request. Check API permissions and configuration.")
+
+
 SYSTEM = ("You are JARVIS, a concise, helpful, voice-friendly personal assistant. "
           "Be clear that you cannot independently operate the user's PC or perform external actions. "
           "Never claim to have sent messages, deployed code, or accessed local files. "
@@ -106,13 +130,40 @@ async def chat(request: ChatRequest, http_request: Request):
                           "store": False,
                           "tool_choice": "none"},
                 )
-                result.raise_for_status()
+                if result.status_code >= 400:
+                    try:
+                        error_body = result.json().get("error", {})
+                        upstream_code = error_body.get("code") if isinstance(error_body, dict) else None
+                    except (ValueError, AttributeError, TypeError):
+                        upstream_code = None
+                    outgoing_status, error_code, description = classify_ai_error(
+                        result.status_code, upstream_code
+                    )
+                    logger.warning("OpenAI request failed: status=%s category=%s",
+                                   result.status_code, error_code)
+                    raise HTTPException(
+                        status_code=outgoing_status,
+                        detail={"code": error_code, "message": description}
+                    )
                 data = result.json()
                 pieces = [c.get("text", "") for item in data.get("output", [])
                           for c in item.get("content", []) if c.get("type") == "output_text"]
                 answer = "\n".join(pieces).strip() or "The AI returned no text."
-        except (httpx.HTTPError, ValueError):
-            raise HTTPException(status_code=503, detail="AI service unavailable. Please try again.")
+        except httpx.TimeoutException:
+            logger.warning("OpenAI connection timeout")
+            raise HTTPException(status_code=503, detail={
+                "code": "api_timeout", "message": "OpenAI request timed out. Try again later."
+            })
+        except httpx.RequestError:
+            logger.warning("OpenAI connection problem")
+            raise HTTPException(status_code=503, detail={
+                "code": "api_connection", "message": "Unable to reach OpenAI API from the server."
+            })
+        except (ValueError, TypeError, KeyError):
+            logger.warning("Unexpected OpenAI response format")
+            raise HTTPException(status_code=502, detail={
+                "code": "api_response_invalid", "message": "OpenAI returned an unexpected response."
+            })
     if key and token:
         conversation = HISTORY.setdefault(token, deque(maxlen=MAX_EXCHANGES * 2))
         conversation.append({"role": "user", "content": request.message})
