@@ -182,3 +182,37 @@ def test_system_diagnostics_are_owner_only(monkeypatch):
         assert data['persistent_storage_enabled'] is False
         assert isinstance(data['chat_requests_remaining'], int)
         owner.post('/api/auth/logout')
+
+def test_ai_upstream_errors_redacted(monkeypatch):
+    import importlib
+    api = importlib.import_module('app')
+    class FakeResponse:
+        status_code = 401
+        def json(self):
+            return {"error": {"code": "invalid_api_key", "message": "secret-sensitive-payload"}}
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, *args, **kwargs): return FakeResponse()
+    monkeypatch.setenv('JARVIS_OWNER_PASSWORD', 'test-owner-password')
+    monkeypatch.setenv('JARVIS_LOCAL_DEV', '1')
+    monkeypatch.setenv('OPENAI_API_KEY', 'fake-test-key')
+    monkeypatch.setattr(api.httpx, 'AsyncClient', FakeClient)
+    with TestClient(app) as owner:
+        assert owner.post('/api/auth/login', json={'password':'test-owner-password'}).status_code == 200
+        result = owner.post('/api/chat', json={'message':'hello'})
+        assert result.status_code == 502
+        detail = result.json()['detail']
+        assert detail['code'] == 'api_authentication'
+        assert 'secret-sensitive-payload' not in str(result.json())
+        owner.post('/api/auth/logout')
+
+def test_ai_error_categories():
+    from app import classify_ai_error
+    assert classify_ai_error(401)[1] == 'api_authentication'
+    assert classify_ai_error(429, 'insufficient_quota')[1] == 'api_quota'
+    assert classify_ai_error(429, 'rate_limit_exceeded')[1] == 'api_rate_limit'
+    assert classify_ai_error(404)[1] == 'model_unavailable'
+    assert classify_ai_error(400)[1] == 'api_request_invalid'
+    assert classify_ai_error(503)[1] == 'api_service_unavailable'
