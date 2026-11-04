@@ -136,7 +136,10 @@ async function refreshSystemStatus() {
     const response = await fetch('/api/system/status', {cache: 'no-store'});
     if (!response.ok) return;
     const data = await response.json();
-    $('#ai-status').textContent = data.ai_configured ? 'CONFIGURED' : 'LOCAL';
+    $('#ai-status').textContent = data.ai_configured ? 'KEY SET' : 'KEY MISSING';
+    $('#ai-status').title = data.ai_configured
+      ? 'An API key is configured; successful model responses are confirmed only after a chat request.'
+      : 'Set OPENAI_API_KEY in Render → JARVIS service → Environment, then redeploy.';
     $('#state').textContent = 'READY · ' + data.chat_requests_remaining + ' CHAT REQUESTS LEFT';
   } catch (_) {}
 }
@@ -213,10 +216,14 @@ async function sendMessage(message) {
     const data = await response.json();
     addMessage('assistant', data.answer);
     $('#mode').textContent = data.mode === 'ai' ? 'AI MODE' : 'LOCAL MODE';
+    $('#ai-status').textContent = data.mode === 'ai' ? 'AI WORKING' : 'KEY MISSING';
+    if (data.mode === 'local') {
+      addMessage('assistant', 'AI is not configured on this server. Add OPENAI_API_KEY in Render Environment and save/redeploy to enable intelligent conversations.');
+    }
     speak(data.answer);
     refreshSystemStatus();
   } catch (_) {
-    addMessage('assistant', 'Unable to reach the assistant service. Check that the server is running.');
+    addMessage('assistant', 'The request failed. Check the Render logs and verify that the API key, model access and API billing are configured.');
   } finally {
     busy = false;
     $('#send').disabled = false;
