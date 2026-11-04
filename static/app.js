@@ -136,10 +136,14 @@ async function refreshSystemStatus() {
     const response = await fetch('/api/system/status', {cache: 'no-store'});
     if (!response.ok) return;
     const data = await response.json();
-    $('#ai-status').textContent = data.ai_configured ? 'KEY SET' : 'KEY MISSING';
-    $('#ai-status').title = data.ai_configured
-      ? 'An API key is configured; successful model responses are confirmed only after a chat request.'
-      : 'Set OPENAI_API_KEY in Render → JARVIS service → Environment, then redeploy.';
+    $('#ai-status').textContent = data.ai_provider === 'ollama'
+      ? 'LOCAL AI READY'
+      : (data.ai_configured ? 'KEY SET' : 'KEY MISSING');
+    $('#ai-status').title = data.ai_provider === 'ollama'
+      ? 'Local Ollama selected; working AI response is confirmed by a chat message.'
+      : (data.ai_configured
+        ? 'An API key is configured; successful model responses are confirmed by a chat request.'
+        : 'Set OPENAI_API_KEY in Render Environment or select local Ollama on your PC.');
     $('#state').textContent = 'READY · ' + data.chat_requests_remaining + ' CHAT REQUESTS LEFT';
   } catch (_) {}
 }
@@ -230,7 +234,7 @@ async function sendMessage(message) {
     const data = await response.json();
     addMessage('assistant', data.answer);
     $('#mode').textContent = data.mode === 'ai' ? 'AI MODE' : 'LOCAL MODE';
-    $('#ai-status').textContent = data.mode === 'ai' ? 'AI WORKING' : 'KEY MISSING';
+    $('#ai-status').textContent = data.mode === 'ai' ? 'AI WORKING' : 'AI NOT CONFIGURED';
     if (data.mode === 'local') {
       addMessage('assistant', 'AI is not configured on this server. Add OPENAI_API_KEY in Render Environment and save/redeploy to enable intelligent conversations.');
     }
