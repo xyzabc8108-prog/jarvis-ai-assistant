@@ -134,6 +134,7 @@ def test_ai_memory_round_trip_without_api_charges(monkeypatch):
 
     calls = []
     class FakeResponse:
+        status_code = 200
         def raise_for_status(self): pass
         def json(self):
             return {'output': [{'content': [{'type': 'output_text', 'text': 'Acknowledged.'}]}]}
